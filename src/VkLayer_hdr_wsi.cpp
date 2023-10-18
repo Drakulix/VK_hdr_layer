@@ -162,6 +162,13 @@ namespace HdrLayer
       wp_color_representation_v1 *colorRepresentation = wp_color_representation_manager_v1_create(connState.colorRepresentation, surface);
       wl_display_flush(connState.display);
 
+      VkResult result = pDispatch->CreateWaylandSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
+      if (result != VK_SUCCESS)
+      {
+        fprintf(stderr, "[HDR Layer] Failed to create Vulkan wayland surface - vr: %s\n", vkroots::helpers::enumString(result));
+        return result;
+      }
+
       auto hdrSurface = HdrSurface::create(*pSurface, HdrSurfaceData{
                                                           .instance = instance,
                                                           .surfaceConn = connState,
