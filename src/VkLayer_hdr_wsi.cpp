@@ -339,7 +339,7 @@ namespace HdrLayer
       {
         for (uint64_t i = 0; i < s_ExtraHDRSurfaceFormat2sLINEAR.size(); i++)
         {
-          extraFormats.push_back(s_ExtraHDRSurfaceFormat2sHDR10[i].surfaceFormat);
+          extraFormats.push_back(s_ExtraHDRSurfaceFormat2sLINEAR[i].surfaceFormat);
         }
       }
 
