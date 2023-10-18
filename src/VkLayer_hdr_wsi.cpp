@@ -382,15 +382,13 @@ namespace HdrLayer
         }
       }
 
-      VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo = *pSurfaceInfo;
-
       return vkroots::helpers::append(
           pDispatch->GetPhysicalDeviceSurfaceFormats2KHR,
           extraFormats,
           pSurfaceFormatCount,
           pSurfaceFormats,
           physicalDevice,
-          &surfaceInfo);
+          pSurfaceInfo);
     }
 
     static void DestroySurfaceKHR(
