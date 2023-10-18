@@ -575,11 +575,11 @@ namespace HdrLayer
         if (interface == "zcolor_bypass_xwayland"sv) {
           instance->colorXwayland = reinterpret_cast<zcolor_bypass_xwayland *>(
             wl_registry_bind(registry, name, &zcolor_bypass_xwayland_interface, version));
-        } else if (interface == "color_manager"sv) {
+        } else if (interface == "wp_color_manager_v1"sv) {
           instance->colorManagement = reinterpret_cast<wp_color_manager_v1 *>(
             wl_registry_bind(registry, name, &wp_color_manager_v1_interface, version));
           wp_color_manager_v1_add_listener(instance->colorManagement, &color_interface_listener, data);
-        } else if (interface == "color_representation"sv) {
+        } else if (interface == "wp_color_representation_v1"sv) {
           instance->colorRepresentation = reinterpret_cast<wp_color_representation_manager_v1 *>(
             wl_registry_bind(registry, name, &wp_color_representation_v1_interface, version));
           wp_color_representation_manager_v1_add_listener(instance->colorRepresentation, &representation_interface_listener, nullptr);
