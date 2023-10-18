@@ -658,13 +658,10 @@ namespace HdrLayer
       {
         if (result == VK_SUCCESS)
         {
-          HdrSwapchain::create(*pSwapchain, HdrSwapchainData{
-                                                .surface = pCreateInfo->surface,
-                                            });
-
           auto hdrInstance = HdrInstance::get(hdrSurface->instance);
           if (hdrInstance)
           {
+            auto waylandConn = (hdrSurface->surfaceConn.display) ? &hdrSurface->surfaceConn : &hdrInstance->globalConn;
             if (pCreateInfo->compositeAlpha == VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
             {
               wp_color_representation_v1_set_alpha_mode(hdrSurface->colorRepresentation, WP_COLOR_REPRESENTATION_V1_ALPHA_MODE_PREMULTIPLIED_ELECTRICAL);
@@ -673,7 +670,36 @@ namespace HdrLayer
             {
               wp_color_representation_v1_set_alpha_mode(hdrSurface->colorRepresentation, WP_COLOR_REPRESENTATION_V1_ALPHA_MODE_STRAIGHT);
             }
-            wp_color_management_surface_v1_set_default_image_description(hdrSurface->colorSurface);
+
+            auto primaries = 0;
+            switch (swapchainInfo.imageColorSpace) {
+              case VK_COLOR_SPACE_HDR10_ST2084_EXT:
+                primaries = 9;
+                break;
+              case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
+                primaries = 1;
+                break;
+              case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
+                break;
+              default:
+                fprintf(stderr, "[HDR Layer] Unknown color space, assuming untagged");
+            };
+            
+            wp_image_description_v1 *desc = nullptr;
+            if (primaries != 0) {
+              wp_image_description_creator_params_v1 *params = wp_color_manager_v1_new_parametric_creator(waylandConn->colorManagement);
+              wp_image_description_creator_params_v1_set_primaries_cicp(params, primaries);
+              wp_image_description_creator_params_v1_set_tf_cicp(params, 16);
+              desc = wp_image_description_creator_params_v1_create(params);
+              // wp_image_description_v1_add_listener(desc, &image_description_interface_listener, nullptr);
+            }
+
+            wl_display_roundtrip(waylandConn->display); // lets hope the description is ready now!
+            
+            HdrSwapchain::create(*pSwapchain, HdrSwapchainData{
+                                                  .surface = pCreateInfo->surface,
+                                                  .colorDescription = desc,
+                                              });
           }
         }
         else
