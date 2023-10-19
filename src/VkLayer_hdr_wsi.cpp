@@ -66,6 +66,7 @@ namespace HdrLayer
   struct HdrSwapchainData
   {
     VkSurfaceKHR surface;
+    int primaries;
     int tf;
     wp_image_description_v1 *colorDescription;
     bool desc_dirty;
@@ -662,7 +663,7 @@ namespace HdrLayer
 
             auto primaries = 0;
             auto tf = 0;
-            switch (swapchainInfo.imageColorSpace)
+            switch (pCreateInfo->imageColorSpace)
             {
             case VK_COLOR_SPACE_HDR10_ST2084_EXT:
               primaries = 9;
@@ -717,6 +718,7 @@ namespace HdrLayer
 
             HdrSwapchain::create(*pSwapchain, HdrSwapchainData{
                                                   .surface = pCreateInfo->surface,
+                                                  .primaries = primaries,
                                                   .tf = tf,
                                                   .colorDescription = desc,
                                                   .desc_dirty = true,
@@ -767,7 +769,7 @@ namespace HdrLayer
 
         const VkHdrMetadataEXT &metadata = pMetadata[i];
         wp_image_description_creator_params_v1 *params = wp_color_manager_v1_new_parametric_creator(waylandConn->colorManagement);
-        wp_image_description_creator_params_v1_set_primaries(
+        wp_image_description_creator_params_v1_set_mastering_display_primaries(
             params,
             (uint32_t)round(metadata.displayPrimaryRed.x * 10000.0),
             (uint32_t)round(metadata.displayPrimaryRed.y * 10000.0),
@@ -781,6 +783,7 @@ namespace HdrLayer
             params,
             (uint32_t)round(metadata.minLuminance * 10000.0),
             (uint32_t)round(metadata.maxLuminance));
+        wp_image_description_creator_params_v1_set_primaries_cicp(params, hdrSwapchain->primaries);
         wp_image_description_creator_params_v1_set_tf_cicp(params, hdrSwapchain->tf);
         wp_image_description_creator_params_v1_set_maxCLL(params, (uint32_t)round(metadata.maxContentLightLevel));
         wp_image_description_creator_params_v1_set_maxFALL(params, (uint32_t)round(metadata.maxFrameAverageLightLevel));
