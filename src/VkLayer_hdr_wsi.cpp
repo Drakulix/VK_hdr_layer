@@ -93,6 +93,9 @@ namespace HdrLayer
           pCreateInfo->ppEnabledExtensionNames,
           pCreateInfo->ppEnabledExtensionNames + pCreateInfo->enabledExtensionCount);
 
+      if (contains_str(enabledExts, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
+        std::remove(enabledExts.begin(), enabledExts.end(), VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+
       if (!contains_str(enabledExts, VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME))
         enabledExts.push_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
 
@@ -696,8 +699,8 @@ namespace HdrLayer
                   wl_display_roundtrip_queue(waylandConn->display, waylandConn->queue);
                 }
                 else
-              {
-                wl_display_roundtrip(waylandConn->display);
+                {
+                  wl_display_roundtrip(waylandConn->display);
                 }
               }
               if (status == DescStatus::FAILED)
@@ -713,7 +716,7 @@ namespace HdrLayer
             }
             else
             {
-            wl_display_roundtrip(waylandConn->display);
+              wl_display_roundtrip(waylandConn->display);
             }
 
             HdrSwapchain::create(*pSwapchain, HdrSwapchainData{
@@ -798,8 +801,8 @@ namespace HdrLayer
             wl_display_roundtrip_queue(waylandConn->display, waylandConn->queue);
           }
           else
-        {
-          wl_display_roundtrip(waylandConn->display);
+          {
+            wl_display_roundtrip(waylandConn->display);
           }
         }
         if (status == DescStatus::FAILED)
