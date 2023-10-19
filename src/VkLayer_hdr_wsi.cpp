@@ -690,7 +690,14 @@ namespace HdrLayer
               wp_image_description_v1_add_listener(desc, &image_description_interface_listener, &status);
               while (status == DescStatus::WAITING)
               {
+                if (waylandConn->queue)
+                {
+                  wl_display_roundtrip_queue(waylandConn->display, waylandConn->queue);
+                }
+                else
+              {
                 wl_display_roundtrip(waylandConn->display);
+                }
               }
               if (status == DescStatus::FAILED)
               {
@@ -699,7 +706,14 @@ namespace HdrLayer
               }
             }
 
+            if (waylandConn->queue)
+            {
+              wl_display_roundtrip_queue(waylandConn->display, waylandConn->queue);
+            }
+            else
+            {
             wl_display_roundtrip(waylandConn->display);
+            }
 
             HdrSwapchain::create(*pSwapchain, HdrSwapchainData{
                                                   .surface = pCreateInfo->surface,
@@ -776,7 +790,14 @@ namespace HdrLayer
         wp_image_description_v1_add_listener(desc, &image_description_interface_listener, &status);
         while (status == DescStatus::WAITING)
         {
+          if (waylandConn->queue)
+          {
+            wl_display_roundtrip_queue(waylandConn->display, waylandConn->queue);
+          }
+          else
+        {
           wl_display_roundtrip(waylandConn->display);
+          }
         }
         if (status == DescStatus::FAILED)
         {
