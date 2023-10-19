@@ -66,6 +66,7 @@ namespace HdrLayer
   struct HdrSwapchainData
   {
     VkSurfaceKHR surface;
+    int tf;
     wp_image_description_v1 *colorDescription;
     bool desc_dirty;
   };
@@ -660,13 +661,16 @@ namespace HdrLayer
             }
 
             auto primaries = 0;
+            auto tf = 0;
             switch (swapchainInfo.imageColorSpace)
             {
             case VK_COLOR_SPACE_HDR10_ST2084_EXT:
               primaries = 9;
+              tf = 16;
               break;
             case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
               primaries = 1;
+              tf = 8;
               break;
             case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
               break;
@@ -676,12 +680,12 @@ namespace HdrLayer
 
             wp_image_description_v1 *desc = nullptr;
 
-            if (primaries != 0)
+            if (primaries != 0 && tf != 0)
             {
               auto status = DescStatus::WAITING;
               wp_image_description_creator_params_v1 *params = wp_color_manager_v1_new_parametric_creator(waylandConn->colorManagement);
               wp_image_description_creator_params_v1_set_primaries_cicp(params, primaries);
-              wp_image_description_creator_params_v1_set_tf_cicp(params, 16);
+              wp_image_description_creator_params_v1_set_tf_cicp(params, tf);
               desc = wp_image_description_creator_params_v1_create(params);
               wp_image_description_v1_add_listener(desc, &image_description_interface_listener, &status);
               while (status == DescStatus::WAITING)
@@ -699,6 +703,7 @@ namespace HdrLayer
 
             HdrSwapchain::create(*pSwapchain, HdrSwapchainData{
                                                   .surface = pCreateInfo->surface,
+                                                  .tf = tf,
                                                   .colorDescription = desc,
                                               });
           }
@@ -761,7 +766,7 @@ namespace HdrLayer
             params,
             (uint32_t)round(metadata.minLuminance * 10000.0),
             (uint32_t)round(metadata.maxLuminance));
-        wp_image_description_creator_params_v1_set_tf_cicp(params, 16);
+        wp_image_description_creator_params_v1_set_tf_cicp(params, hdrSwapchain->tf);
         wp_image_description_creator_params_v1_set_maxCLL(params, (uint32_t)round(metadata.maxContentLightLevel));
         wp_image_description_creator_params_v1_set_maxFALL(params, (uint32_t)round(metadata.maxFrameAverageLightLevel));
 
@@ -778,12 +783,12 @@ namespace HdrLayer
         }
         else
         {
-        fprintf(stderr, "[HDR Layer] VkHdrMetadataEXT: mastering luminance min %f nits, max %f nits\n", metadata.minLuminance, metadata.maxLuminance);
-        fprintf(stderr, "[HDR Layer] VkHdrMetadataEXT: maxContentLightLevel %f nits\n", metadata.maxContentLightLevel);
-        fprintf(stderr, "[HDR Layer] VkHdrMetadataEXT: maxFrameAverageLightLevel %f nits\n", metadata.maxFrameAverageLightLevel);
+          fprintf(stderr, "[HDR Layer] VkHdrMetadataEXT: mastering luminance min %f nits, max %f nits\n", metadata.minLuminance, metadata.maxLuminance);
+          fprintf(stderr, "[HDR Layer] VkHdrMetadataEXT: maxContentLightLevel %f nits\n", metadata.maxContentLightLevel);
+          fprintf(stderr, "[HDR Layer] VkHdrMetadataEXT: maxFrameAverageLightLevel %f nits\n", metadata.maxFrameAverageLightLevel);
 
-        hdrSwapchain->colorDescription = desc;
-        hdrSwapchain->desc_dirty = true;
+          hdrSwapchain->colorDescription = desc;
+          hdrSwapchain->desc_dirty = true;
         }
       }
     }
