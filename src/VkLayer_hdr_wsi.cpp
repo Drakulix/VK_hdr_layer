@@ -71,6 +71,13 @@ namespace HdrLayer
   };
   VKROOTS_DEFINE_SYNCHRONIZED_MAP_TYPE(HdrSwapchain, VkSwapchainKHR);
 
+  enum DescStatus
+  {
+    WAITING,
+    READY,
+    FAILED,
+  };
+
   class VkInstanceOverrides
   {
   public:
@@ -548,20 +555,6 @@ namespace HdrLayer
                               struct wp_color_management_surface_v1 *wp_color_management_surface_v1) {}
     };
 
-    static constexpr struct wp_image_description_v1_listener image_description_interface_listener
-    {
-      .failed = [](
-                    void *data,
-                    struct wp_image_description_v1 *wp_image_description_v1,
-                    uint32_t cause,
-                    const char *msg)
-      {
-        fprintf(stderr, "[HDR Layer] Image description failed: Cause %u, message: %s.\n", cause, msg);
-      },
-      .ready = [](void *data, struct wp_image_description_v1 *wp_image_description_v1, uint32_t identity) {}
-      // we don't call get_information, so the rest should never be called
-    };
-
     static constexpr wl_registry_listener s_registryListener = {
         .global = [](void *data, wl_registry *registry, uint32_t name, const char *interface, uint32_t version)
         {
@@ -667,30 +660,43 @@ namespace HdrLayer
             }
 
             auto primaries = 0;
-            switch (swapchainInfo.imageColorSpace) {
-              case VK_COLOR_SPACE_HDR10_ST2084_EXT:
-                primaries = 9;
-                break;
-              case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
-                primaries = 1;
-                break;
-              case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
-                break;
-              default:
-                fprintf(stderr, "[HDR Layer] Unknown color space, assuming untagged");
+            switch (swapchainInfo.imageColorSpace)
+            {
+            case VK_COLOR_SPACE_HDR10_ST2084_EXT:
+              primaries = 9;
+              break;
+            case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
+              primaries = 1;
+              break;
+            case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
+              break;
+            default:
+              fprintf(stderr, "[HDR Layer] Unknown color space, assuming untagged");
             };
-            
+
             wp_image_description_v1 *desc = nullptr;
-            if (primaries != 0) {
+
+            if (primaries != 0)
+            {
+              auto status = DescStatus::WAITING;
               wp_image_description_creator_params_v1 *params = wp_color_manager_v1_new_parametric_creator(waylandConn->colorManagement);
               wp_image_description_creator_params_v1_set_primaries_cicp(params, primaries);
               wp_image_description_creator_params_v1_set_tf_cicp(params, 16);
               desc = wp_image_description_creator_params_v1_create(params);
-              // wp_image_description_v1_add_listener(desc, &image_description_interface_listener, nullptr);
+              wp_image_description_v1_add_listener(desc, &image_description_interface_listener, &status);
+              while (status == DescStatus::WAITING)
+              {
+                wl_display_roundtrip(waylandConn->display);
+              }
+              if (status == DescStatus::FAILED)
+              {
+                fprintf(stderr, "[HDR Layer] Failed to create image description, failing swapchain creation");
+                return VK_ERROR_INITIALIZATION_FAILED;
+              }
             }
 
-            wl_display_roundtrip(waylandConn->display); // lets hope the description is ready now!
-            
+            wl_display_roundtrip(waylandConn->display);
+
             HdrSwapchain::create(*pSwapchain, HdrSwapchainData{
                                                   .surface = pCreateInfo->surface,
                                                   .colorDescription = desc,
@@ -758,17 +764,27 @@ namespace HdrLayer
         wp_image_description_creator_params_v1_set_tf_cicp(params, 16);
         wp_image_description_creator_params_v1_set_maxCLL(params, (uint32_t)round(metadata.maxContentLightLevel));
         wp_image_description_creator_params_v1_set_maxFALL(params, (uint32_t)round(metadata.maxFrameAverageLightLevel));
+
+        auto status = DescStatus::WAITING;
         wp_image_description_v1 *desc = wp_image_description_creator_params_v1_create(params);
-        // wp_image_description_v1_add_listener(desc, &image_description_interface_listener, nullptr);
-
-        wl_display_roundtrip(waylandConn->display); // lets hope the description is ready now!
-
+        wp_image_description_v1_add_listener(desc, &image_description_interface_listener, &status);
+        while (status == DescStatus::WAITING)
+        {
+          wl_display_roundtrip(waylandConn->display);
+        }
+        if (status == DescStatus::FAILED)
+        {
+          fprintf(stderr, "[HDR Layer] Failed to create new image description for new metadata!");
+        }
+        else
+        {
         fprintf(stderr, "[HDR Layer] VkHdrMetadataEXT: mastering luminance min %f nits, max %f nits\n", metadata.minLuminance, metadata.maxLuminance);
         fprintf(stderr, "[HDR Layer] VkHdrMetadataEXT: maxContentLightLevel %f nits\n", metadata.maxContentLightLevel);
         fprintf(stderr, "[HDR Layer] VkHdrMetadataEXT: maxFrameAverageLightLevel %f nits\n", metadata.maxFrameAverageLightLevel);
 
         hdrSwapchain->colorDescription = desc;
         hdrSwapchain->desc_dirty = true;
+        }
       }
     }
 
@@ -799,6 +815,27 @@ namespace HdrLayer
 
       return pDispatch->QueuePresentKHR(queue, pPresentInfo);
     }
+
+  private:
+    static constexpr struct wp_image_description_v1_listener image_description_interface_listener
+    {
+      .failed = [](
+                    void *data,
+                    struct wp_image_description_v1 *wp_image_description_v1,
+                    uint32_t cause,
+                    const char *msg)
+      {
+        fprintf(stderr, "[HDR Layer] Image description failed: Cause %u, message: %s.\n", cause, msg);
+        auto state = reinterpret_cast<enum DescStatus *>(data);
+        *state = DescStatus::FAILED;
+      },
+      .ready = [](void *data, struct wp_image_description_v1 *wp_image_description_v1, uint32_t identity)
+      {
+        auto state = reinterpret_cast<enum DescStatus *>(data);
+        *state = DescStatus::READY;
+      }
+      // we don't call get_information, so the rest should never be called
+    };
   };
 
 }
