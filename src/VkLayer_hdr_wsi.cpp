@@ -705,6 +705,7 @@ namespace HdrLayer
                                                   .surface = pCreateInfo->surface,
                                                   .tf = tf,
                                                   .colorDescription = desc,
+                                                  .desc_dirty = true,
                                               });
           }
         }
