@@ -483,11 +483,6 @@ namespace HdrLayer
         fprintf(stderr, "[HDR Layer] color management implementation doesn't support SET_PRIMARIES..\n");
         return VK_ERROR_INITIALIZATION_FAILED;
       }
-      if (!contains_u32(conn->features, WP_COLOR_MANAGER_V1_FEATURE_SET_TF_POWER))
-      {
-        fprintf(stderr, "[HDR Layer] color management implementation doesn't support SET_TF_POWER..\n");
-        return VK_ERROR_INITIALIZATION_FAILED;
-      }
       if (!conn->colorRepresentation)
       {
         fprintf(stderr, "[HDR Layer] wayland compositor lacking color representation protocol..\n");
