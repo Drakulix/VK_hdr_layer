@@ -1,12 +1,8 @@
 #define VK_USE_PLATFORM_WAYLAND_KHR
-#define VK_USE_PLATFORM_XCB_KHR
-#define VK_USE_PLATFORM_XLIB_KHR
 #include "vkroots.h"
 #include "color-management-v1-client-protocol.h"
 #include "color-representation-v1-client-protocol.h"
-#include "color-bypass-xwayland-client-protocol.h"
 
-#include <X11/Xlib-xcb.h>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -31,35 +27,140 @@ namespace HdrLayer
                         { return value == lookupValue; }) != vec.end();
   }
 
-  struct WaylandConnectionData
+  struct ColorDescription
   {
-    wl_display *display;
-    wl_event_queue *queue;
-    wp_color_manager_v1 *colorManagement;
-    wp_color_representation_manager_v1 *colorRepresentation;
-    zcolor_bypass_xwayland *colorXwayland;
-
-    std::vector<uint32_t> features;
-    std::vector<uint32_t> tf_cicp;
-    std::vector<uint32_t> primaries_cicp;
+    VkSurfaceFormat2KHR surface;
+    int primaries_cicp;
+    int tf_cicp;
+    bool extended_volume;
   };
 
-  struct HdrInstanceData
-  {
-    WaylandConnectionData globalConn;
-  };
-  VKROOTS_DEFINE_SYNCHRONIZED_MAP_TYPE(HdrInstance, VkInstance);
+  static constexpr std::array<ColorDescription, 12> s_ExtraHDRSurfaceFormats = {
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_A2B10G10R10_UNORM_PACK32,
+                          VK_COLOR_SPACE_HDR10_ST2084_EXT,
+                      }},
+          .primaries_cicp = 9,
+          .tf_cicp = 16,
+          .extended_volume = false,
+      },
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_A2R10G10B10_UNORM_PACK32,
+                          VK_COLOR_SPACE_HDR10_ST2084_EXT,
+                      }},
+          .primaries_cicp = 9,
+          .tf_cicp = 16,
+          .extended_volume = false,
+      },
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_A2B10G10R10_UNORM_PACK32,
+                          VK_COLOR_SPACE_HDR10_HLG_EXT,
+                      }},
+          .primaries_cicp = 9,
+          .tf_cicp = 18,
+          .extended_volume = false,
+      },
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_A2R10G10B10_UNORM_PACK32,
+                          VK_COLOR_SPACE_HDR10_HLG_EXT,
+                      }},
+          .primaries_cicp = 9,
+          .tf_cicp = 18,
+          .extended_volume = false,
+      },
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_R16G16B16A16_SFLOAT,
+                          VK_COLOR_SPACE_BT2020_LINEAR_EXT,
+                      }},
+          .primaries_cicp = 9,
+          .tf_cicp = 8,
+          .extended_volume = false,
+      },
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_A2B10G10R10_UNORM_PACK32,
+                          VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT,
+                      }},
+          .primaries_cicp = 13,
+          .tf_cicp = 18,
+          .extended_volume = false,
+      },
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_A2R10G10B10_UNORM_PACK32,
+                          VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT,
+                      }},
+          .primaries_cicp = 13,
+          .tf_cicp = 18,
+          .extended_volume = false,
+      },
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_R16G16B16A16_SFLOAT,
+                          VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT,
+                      }},
+          .primaries_cicp = 13,
+          .tf_cicp = 8,
+          .extended_volume = false,
+      },
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_A2B10G10R10_UNORM_PACK32,
+                          VK_COLOR_SPACE_BT709_NONLINEAR_EXT,
+                      }},
+          .primaries_cicp = 6,
+          .tf_cicp = 6,
+          .extended_volume = true,
+      },
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_A2R10G10B10_UNORM_PACK32,
+                          VK_COLOR_SPACE_BT709_NONLINEAR_EXT,
+                      }},
+          .primaries_cicp = 6,
+          .tf_cicp = 6,
+          .extended_volume = true,
+      },
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_R16G16B16A16_SFLOAT,
+                          VK_COLOR_SPACE_BT709_LINEAR_EXT,
+                      }},
+          .primaries_cicp = 6,
+          .tf_cicp = 8,
+          .extended_volume = true,
+      },
+      ColorDescription{
+          .surface = {.surfaceFormat = {
+                          VK_FORMAT_R16G16B16A16_SFLOAT,
+                          VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT,
+                      }},
+          .primaries_cicp = 1,
+          .tf_cicp = 8,
+          .extended_volume = true,
+      }};
 
   struct HdrSurfaceData
   {
     VkInstance instance;
-    WaylandConnectionData surfaceConn;
+
+    wl_display *display;
+    wl_event_queue *queue;
+    wp_color_manager_v1 *colorManagement;
+    wp_color_representation_manager_v1 *colorRepresentationMgr;
+
+    std::vector<uint32_t> features;
+    std::vector<uint32_t> tf_cicp;
+    std::vector<uint32_t> primaries_cicp;
+
+    wl_surface *surface;
     wp_color_management_surface_v1 *colorSurface;
     wp_color_representation_v1 *colorRepresentation;
-
-    xcb_connection_t *connection;
-    xcb_window_t window;
-    wl_surface *surface;
   };
   VKROOTS_DEFINE_SYNCHRONIZED_MAP_TYPE(HdrSurface, VkSurfaceKHR);
 
@@ -68,6 +169,7 @@ namespace HdrLayer
     VkSurfaceKHR surface;
     int primaries;
     int tf;
+
     wp_image_description_v1 *colorDescription;
     bool desc_dirty;
   };
@@ -96,53 +198,13 @@ namespace HdrLayer
       if (contains_str(enabledExts, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
         std::remove(enabledExts.begin(), enabledExts.end(), VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
 
-      if (!contains_str(enabledExts, VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME))
-        enabledExts.push_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
-
-      if (contains_str(enabledExts, VK_KHR_XLIB_SURFACE_EXTENSION_NAME))
-        enabledExts.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
-
       VkInstanceCreateInfo createInfo = *pCreateInfo;
       createInfo.enabledExtensionCount = uint32_t(enabledExts.size());
       createInfo.ppEnabledExtensionNames = enabledExts.data();
 
       VkResult result = pfnCreateInstanceProc(&createInfo, pAllocator, pInstance);
-      if (result != VK_SUCCESS)
-        return result;
-
-      wl_display *display = wl_display_connect(nullptr);
-      if (!display)
-      {
-        fprintf(stderr, "[HDR Layer] Failed to connect to wayland socket.\n");
-        return result;
-      }
-
-      auto connectionState = WaylandConnectionData{
-          .display = display,
-          .features = {},
-          .tf_cicp = {},
-          .primaries_cicp = {},
-      };
-      InitializeWaylandState(&connectionState);
-
-      auto state = HdrInstance::create(*pInstance, HdrInstanceData{
-                                                       .globalConn = connectionState,
-                                                   });
 
       return result;
-    }
-
-    static void DestroyInstance(
-        const vkroots::VkInstanceDispatch *pDispatch,
-        VkInstance instance,
-        const VkAllocationCallbacks *pAllocator)
-    {
-      if (auto state = HdrInstance::get(instance))
-      {
-        wl_display_disconnect(state->globalConn.display);
-      }
-      HdrInstance::remove(instance);
-      pDispatch->DestroyInstance(instance, pAllocator);
     }
 
     static VkResult CreateWaylandSurfaceKHR(
@@ -152,178 +214,61 @@ namespace HdrLayer
         const VkAllocationCallbacks *pAllocator,
         VkSurfaceKHR *pSurface)
     {
-      auto hdrInstance = HdrInstance::get(instance);
-      if (!hdrInstance)
-        return pDispatch->CreateWaylandSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
-
-      // new wayland-connection
       auto queue = wl_display_create_queue(pCreateInfo->display);
-      auto connState = WaylandConnectionData{
-          .display = pCreateInfo->display,
-          .queue = queue,
-          .features = {},
-          .tf_cicp = {},
-          .primaries_cicp = {},
-      };
-      InitializeWaylandState(&connState);
-
-      auto surface = pCreateInfo->surface;
-
-      wp_color_management_surface_v1 *colorSurface = wp_color_manager_v1_get_color_management_surface(connState.colorManagement, surface);
-      wp_color_management_surface_v1_add_listener(colorSurface, &color_surface_interface_listener, nullptr);
-      wp_color_representation_v1 *colorRepresentation = wp_color_representation_manager_v1_create(connState.colorRepresentation, surface);
-      wl_display_flush(connState.display);
-
-      VkResult result = pDispatch->CreateWaylandSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
-      if (result != VK_SUCCESS)
-      {
-        fprintf(stderr, "[HDR Layer] Failed to create Vulkan wayland surface - vr: %s\n", vkroots::helpers::enumString(result));
-        return result;
-      }
+      wl_registry *registry = wl_display_get_registry(pCreateInfo->display);
+      wl_proxy_set_queue(reinterpret_cast<wl_proxy *>(registry), queue);
 
       auto hdrSurface = HdrSurface::create(*pSurface, HdrSurfaceData{
                                                           .instance = instance,
-                                                          .surfaceConn = connState,
-                                                          .colorSurface = colorSurface,
-                                                          .colorRepresentation = colorRepresentation,
-                                                          .connection = nullptr,
-                                                          .window = 0,
-                                                          .surface = surface,
+                                                          .display = pCreateInfo->display,
+                                                          .queue = queue,
+                                                          .colorManagement = nullptr,
+                                                          .colorRepresentationMgr = nullptr,
+                                                          .features = {},
+                                                          .tf_cicp = {},
+                                                          .primaries_cicp = {},
+                                                          .surface = pCreateInfo->surface,
+                                                          .colorSurface = nullptr,
+                                                          .colorRepresentation = nullptr,
                                                       });
+      wl_registry_add_listener(registry, &s_registryListener, reinterpret_cast<void *>(hdrSurface.get()));
 
-      DumpHdrSurfaceState(hdrSurface);
+      wl_display_dispatch_queue(pCreateInfo->display, queue);
+      wl_display_roundtrip_queue(pCreateInfo->display, queue); // get globals
+      wl_display_roundtrip_queue(pCreateInfo->display, queue); // get features/supported_cicps/etc
+      wl_registry_destroy(registry);
 
-      return VK_SUCCESS;
-    }
-
-    static VkBool32 GetPhysicalDeviceXcbPresentationSupportKHR(
-        const vkroots::VkInstanceDispatch *pDispatch,
-        VkPhysicalDevice physicalDevice,
-        uint32_t queueFamilyIndex,
-        xcb_connection_t *connection,
-        xcb_visualid_t visual_id)
-    {
-      auto hdrInstance = HdrInstance::get(pDispatch->Instance);
-      if (!hdrInstance || !hdrInstance->globalConn.colorXwayland)
-        return pDispatch->GetPhysicalDeviceXcbPresentationSupportKHR(physicalDevice, queueFamilyIndex, connection, visual_id);
-
-      return GetPhysicalDevicePresentationSupport(pDispatch, hdrInstance, physicalDevice, queueFamilyIndex);
-    }
-
-    static VkBool32 GetPhysicalDeviceXlibPresentationSupportKHR(
-        const vkroots::VkInstanceDispatch *pDispatch,
-        VkPhysicalDevice physicalDevice,
-        uint32_t queueFamilyIndex,
-        Display *dpy,
-        VisualID visualID)
-    {
-      auto hdrInstance = HdrInstance::get(pDispatch->Instance);
-      if (!hdrInstance || !hdrInstance->globalConn.colorXwayland)
-        return pDispatch->GetPhysicalDeviceXlibPresentationSupportKHR(physicalDevice, queueFamilyIndex, dpy, visualID);
-
-      return GetPhysicalDevicePresentationSupport(pDispatch, hdrInstance, physicalDevice, queueFamilyIndex);
-    }
-
-    static VkResult CreateXcbSurfaceKHR(
-        const vkroots::VkInstanceDispatch *pDispatch,
-        VkInstance instance,
-        const VkXcbSurfaceCreateInfoKHR *pCreateInfo,
-        const VkAllocationCallbacks *pAllocator,
-        VkSurfaceKHR *pSurface)
-    {
-      auto hdrInstance = HdrInstance::get(instance);
-      if (!hdrInstance || !hdrInstance->globalConn.colorXwayland)
-        return pDispatch->CreateXcbSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
-
-      auto connection = pCreateInfo->connection;
-      auto window = pCreateInfo->window;
-
-      fprintf(stderr, "[HDR Layer] Creating color_management surface: xid: 0x%x\n", window);
-
-      wp_color_management_surface_v1 *colorSurface = zcolor_bypass_xwayland_get_color_management_surface(hdrInstance->globalConn.colorXwayland, pCreateInfo->window);
-      wp_color_management_surface_v1_add_listener(colorSurface, &color_surface_interface_listener, nullptr);
-      wp_color_representation_v1 *colorRepresentation = zcolor_bypass_xwayland_get_color_representation(hdrInstance->globalConn.colorXwayland, pCreateInfo->window);
-      wl_display_flush(hdrInstance->globalConn.display);
-
-      VkResult result = pDispatch->CreateXcbSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
-      if (result != VK_SUCCESS)
+      if (!hdrSurface.get()->colorManagement)
       {
-        fprintf(stderr, "[HDR Layer] Failed to create Vulkan xcb surface - vr: %s xid: 0x%x\n", vkroots::helpers::enumString(result), window);
-        return result;
+        fprintf(stderr, "[HDR Layer] wayland compositor lacking color management protocol..\n");
+        return VK_ERROR_INITIALIZATION_FAILED;
+      }
+      if (!contains_u32(hdrSurface.get()->features, WP_COLOR_MANAGER_V1_FEATURE_PARAMETRIC))
+      {
+        fprintf(stderr, "[HDR Layer] color management implementation doesn't support parametric image descriptions..\n");
+        return VK_ERROR_INITIALIZATION_FAILED;
+      }
+      if (!contains_u32(hdrSurface.get()->features, WP_COLOR_MANAGER_V1_FEATURE_SET_PRIMARIES))
+      {
+        fprintf(stderr, "[HDR Layer] color management implementation doesn't support SET_PRIMARIES..\n");
+        return VK_ERROR_INITIALIZATION_FAILED;
+      }
+      if (!hdrSurface.get()->colorRepresentation)
+      {
+        fprintf(stderr, "[HDR Layer] wayland compositor lacking color representation protocol..\n");
+        return VK_ERROR_INITIALIZATION_FAILED;
       }
 
-      auto hdrSurface = HdrSurface::create(*pSurface, HdrSurfaceData{
-                                                          .instance = instance,
-                                                          .colorSurface = colorSurface,
-                                                          .colorRepresentation = colorRepresentation,
-                                                          .connection = connection,
-                                                          .window = window,
-                                                          .surface = nullptr,
-                                                      });
-
-      DumpHdrSurfaceState(hdrSurface);
-
-      return VK_SUCCESS;
-    }
-
-    static VkResult CreateXlibSurfaceKHR(
-        const vkroots::VkInstanceDispatch *pDispatch,
-        VkInstance instance,
-        const VkXlibSurfaceCreateInfoKHR *pCreateInfo,
-        const VkAllocationCallbacks *pAllocator,
-        VkSurfaceKHR *pSurface)
-    {
-      auto hdrInstance = HdrInstance::get(instance);
-      if (!hdrInstance || !hdrInstance->globalConn.colorXwayland)
-        return pDispatch->CreateXlibSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
-
-      auto connection = XGetXCBConnection(pCreateInfo->dpy);
-      auto window = xcb_window_t(pCreateInfo->window);
-
-      fprintf(stderr, "[HDR Layer] Creating color_management surface: xid: 0x%x\n", window);
-
-      wp_color_management_surface_v1 *colorSurface = zcolor_bypass_xwayland_get_color_management_surface(hdrInstance->globalConn.colorXwayland, pCreateInfo->window);
+      wp_color_management_surface_v1 *colorSurface = wp_color_manager_v1_get_color_management_surface(hdrSurface.get()->colorManagement, pCreateInfo->surface);
       wp_color_management_surface_v1_add_listener(colorSurface, &color_surface_interface_listener, nullptr);
-      wp_color_representation_v1 *colorRepresentation = zcolor_bypass_xwayland_get_color_representation(hdrInstance->globalConn.colorXwayland, pCreateInfo->window);
-      wl_display_flush(hdrInstance->globalConn.display);
+      wp_color_representation_v1 *colorRepresentation = wp_color_representation_manager_v1_create(hdrSurface.get()->colorRepresentationMgr, pCreateInfo->surface);
+      wl_display_flush(hdrSurface.get()->display);
 
-      VkResult result = pDispatch->CreateXlibSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
-      if (result != VK_SUCCESS)
-      {
-        fprintf(stderr, "[HDR Layer] Failed to create Vulkan xcb surface - vr: %s xid: 0x%x\n", vkroots::helpers::enumString(result), window);
-        return result;
-      }
+      hdrSurface.get()->colorSurface = colorSurface;
+      hdrSurface.get()->colorRepresentation = colorRepresentation;
 
-      auto hdrSurface = HdrSurface::create(*pSurface, HdrSurfaceData{
-                                                          .instance = instance,
-                                                          .colorSurface = colorSurface,
-                                                          .colorRepresentation = colorRepresentation,
-                                                          .connection = connection,
-                                                          .window = window,
-                                                          .surface = nullptr,
-                                                      });
-
-      DumpHdrSurfaceState(hdrSurface);
-
-      return VK_SUCCESS;
+      return pDispatch->CreateWaylandSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
     }
-
-    static constexpr std::array<VkSurfaceFormat2KHR, 2> s_ExtraHDRSurfaceFormat2sHDR10 = {{
-        {.surfaceFormat = {
-             VK_FORMAT_A2B10G10R10_UNORM_PACK32,
-             VK_COLOR_SPACE_HDR10_ST2084_EXT,
-         }},
-        {.surfaceFormat = {
-             VK_FORMAT_A2R10G10B10_UNORM_PACK32,
-             VK_COLOR_SPACE_HDR10_ST2084_EXT,
-         }},
-    }};
-    static constexpr std::array<VkSurfaceFormat2KHR, 1> s_ExtraHDRSurfaceFormat2sLINEAR = {{
-        {.surfaceFormat = {
-             VK_FORMAT_R16G16B16A16_SFLOAT,
-             VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT,
-         }},
-    }};
 
     static VkResult GetPhysicalDeviceSurfaceFormatsKHR(
         const vkroots::VkInstanceDispatch *pDispatch,
@@ -332,28 +277,48 @@ namespace HdrLayer
         uint32_t *pSurfaceFormatCount,
         VkSurfaceFormatKHR *pSurfaceFormats)
     {
-      auto hdrInstance = HdrInstance::get(pDispatch->Instance);
       auto hdrSurface = HdrSurface::get(surface);
-      if (!hdrInstance || !hdrSurface)
+      if (!hdrSurface)
         return pDispatch->GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, pSurfaceFormatCount, pSurfaceFormats);
 
-      auto waylandConn = (hdrSurface->surfaceConn.display) ? &hdrSurface->surfaceConn : &hdrInstance->globalConn;
+      uint32_t *count = nullptr;
+      VkSurfaceFormatKHR *formats = nullptr;
+      std::vector<VkFormat> pixelFormats = {};
+      auto result = pDispatch->GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, count, formats);
+      if (result != VK_SUCCESS)
+      {
+        return result;
+      }
+      for (uint32_t i = 0; i < *count; i++)
+      {
+        pixelFormats.push_back(formats[i].format);
+      }
 
       std::vector<VkSurfaceFormatKHR> extraFormats = {};
-      if (contains_u32(waylandConn->tf_cicp, 16) && contains_u32(waylandConn->primaries_cicp, 9))
+      for (auto desc = s_ExtraHDRSurfaceFormats.begin(); desc != s_ExtraHDRSurfaceFormats.end(); ++desc)
       {
-        for (uint64_t i = 0; i < s_ExtraHDRSurfaceFormat2sHDR10.size(); i++)
+        if (contains_u32(hdrSurface->tf_cicp, desc->tf_cicp) && contains_u32(hdrSurface->primaries_cicp, desc->primaries_cicp) && (!desc->extended_volume || contains_u32(hdrSurface->features, WP_COLOR_MANAGER_V1_FEATURE_EXTENDED_TARGET_VOLUME)) && std::find(pixelFormats.begin(), pixelFormats.end(), desc->surface.surfaceFormat.format) != pixelFormats.end())
         {
-          extraFormats.push_back(s_ExtraHDRSurfaceFormat2sHDR10[i].surfaceFormat);
+          extraFormats.push_back(desc->surface.surfaceFormat);
         }
       }
-      if (contains_u32(waylandConn->tf_cicp, 8) && contains_u32(waylandConn->primaries_cicp, 1) && contains_u32(waylandConn->features, WP_COLOR_MANAGER_V1_FEATURE_EXTENDED_TARGET_VOLUME))
-      {
-        for (uint64_t i = 0; i < s_ExtraHDRSurfaceFormat2sLINEAR.size(); i++)
-        {
-          extraFormats.push_back(s_ExtraHDRSurfaceFormat2sLINEAR[i].surfaceFormat);
-        }
-      }
+      /*
+      // Can we use the preferred description for this?
+      // We don't get output_enter events and even if, they are not enough
+      // to figure out which wl_output color_description we want.
+      extraFormats.push_back({
+          VK_FORMAT_A2R10G10B10_UNORM_PACK32,
+          VK_COLOR_SPACE_PASS_THROUGH_EXT,
+      });
+      extraFormats.push_back({
+          VK_FORMAT_A2B10G10R10_UNORM_PACK32,
+          VK_COLOR_SPACE_PASS_THROUGH_EXT,
+      });
+      extraFormats.push_back({
+          VK_FORMAT_R16G16B16A16_SFLOAT,
+          VK_COLOR_SPACE_PASS_THROUGH_EXT,
+      });
+      */
 
       return vkroots::helpers::append(
           pDispatch->GetPhysicalDeviceSurfaceFormatsKHR,
@@ -371,28 +336,49 @@ namespace HdrLayer
         uint32_t *pSurfaceFormatCount,
         VkSurfaceFormat2KHR *pSurfaceFormats)
     {
-      auto hdrInstance = HdrInstance::get(pDispatch->Instance);
       auto hdrSurface = HdrSurface::get(pSurfaceInfo->surface);
-      if (!hdrInstance || !hdrSurface)
+      if (!hdrSurface)
         return pDispatch->GetPhysicalDeviceSurfaceFormats2KHR(physicalDevice, pSurfaceInfo, pSurfaceFormatCount, pSurfaceFormats);
 
-      auto waylandConn = (hdrSurface->surfaceConn.display) ? &hdrSurface->surfaceConn : &hdrInstance->globalConn;
+      uint32_t *count = nullptr;
+      VkSurfaceFormatKHR *formats = nullptr;
+      std::vector<VkFormat> pixelFormats = {};
+      auto result = pDispatch->GetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, pSurfaceInfo->surface, count, formats);
+      if (result != VK_SUCCESS)
+      {
+        return result;
+      }
+      for (uint32_t i = 0; i < *count; i++)
+      {
+        pixelFormats.push_back(formats[i].format);
+      }
 
       std::vector<VkSurfaceFormat2KHR> extraFormats = {};
-      if (contains_u32(waylandConn->tf_cicp, 16) && contains_u32(waylandConn->primaries_cicp, 9))
+      for (auto desc = s_ExtraHDRSurfaceFormats.begin(); desc != s_ExtraHDRSurfaceFormats.end(); ++desc)
       {
-        for (uint64_t i = 0; i < s_ExtraHDRSurfaceFormat2sHDR10.size(); i++)
+        if (
+            contains_u32(hdrSurface->tf_cicp, desc->tf_cicp) && contains_u32(hdrSurface->primaries_cicp, desc->primaries_cicp) && (!desc->extended_volume || contains_u32(hdrSurface->features, WP_COLOR_MANAGER_V1_FEATURE_EXTENDED_TARGET_VOLUME)) && std::find(pixelFormats.begin(), pixelFormats.end(), desc->surface.surfaceFormat.format) != pixelFormats.end())
         {
-          extraFormats.push_back(s_ExtraHDRSurfaceFormat2sHDR10[i]);
+          extraFormats.push_back(desc->surface);
         }
       }
-      if (contains_u32(waylandConn->tf_cicp, 8) && contains_u32(waylandConn->primaries_cicp, 1) && contains_u32(waylandConn->features, WP_COLOR_MANAGER_V1_FEATURE_EXTENDED_TARGET_VOLUME))
-      {
-        for (uint64_t i = 0; i < s_ExtraHDRSurfaceFormat2sLINEAR.size(); i++)
-        {
-          extraFormats.push_back(s_ExtraHDRSurfaceFormat2sLINEAR[i]);
-        }
-      }
+      /*
+      // Can we use the preferred description for this?
+      // We don't get output_enter events and even if, they are not enough
+      // to figure out which wl_output color_description we want.
+      extraFormats.push_back({.surfaceFormat = {
+                                  VK_FORMAT_A2R10G10B10_UNORM_PACK32,
+                                  VK_COLOR_SPACE_PASS_THROUGH_EXT,
+                              }});
+      extraFormats.push_back({.surfaceFormat = {
+                                  VK_FORMAT_A2B10G10R10_UNORM_PACK32,
+                                  VK_COLOR_SPACE_PASS_THROUGH_EXT,
+                              }});
+      extraFormats.push_back({.surfaceFormat = {
+                                  VK_FORMAT_R16G16B16A16_SFLOAT,
+                                  VK_COLOR_SPACE_PASS_THROUGH_EXT,
+                              }});
+      */
 
       return vkroots::helpers::append(
           pDispatch->GetPhysicalDeviceSurfaceFormats2KHR,
@@ -411,21 +397,24 @@ namespace HdrLayer
     {
       if (auto state = HdrSurface::get(surface))
       {
-        // TODO destroy other objects?
-        wl_surface_destroy(state->surface);
+        wp_color_management_surface_v1_destroy(state->colorSurface);
+        wp_color_representation_v1_destroy(state->colorRepresentation);
+        wp_color_manager_v1_destroy(state->colorManagement);
+        wp_color_representation_manager_v1_destroy(state->colorRepresentationMgr);
+        wl_event_queue_destroy(state->queue);
       }
       HdrSurface::remove(surface);
       pDispatch->DestroySurfaceKHR(instance, surface, pAllocator);
     }
 
-    static VkResult EnumerateDeviceExtensionProperties(
+    static VkResult
+    EnumerateDeviceExtensionProperties(
         const vkroots::VkInstanceDispatch *pDispatch,
         VkPhysicalDevice physicalDevice,
         const char *pLayerName,
         uint32_t *pPropertyCount,
         VkExtensionProperties *pProperties)
     {
-      // TODO: ColorSpace extensions? https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkColorSpaceKHR.html
       static constexpr std::array<VkExtensionProperties, 1> s_LayerExposedExts = {{
           {VK_EXT_HDR_METADATA_EXTENSION_NAME,
            VK_EXT_HDR_METADATA_SPEC_VERSION},
@@ -453,73 +442,6 @@ namespace HdrLayer
     }
 
   private:
-    static VkResult InitializeWaylandState(WaylandConnectionData *conn)
-    {
-      wl_registry *registry = wl_display_get_registry(conn->display);
-      if (conn->queue)
-      {
-        wl_proxy_set_queue(reinterpret_cast<wl_proxy *>(registry), conn->queue);
-      }
-      wl_registry_add_listener(registry, &s_registryListener, reinterpret_cast<void *>(conn));
-
-      if (conn->queue)
-      {
-        wl_display_dispatch_queue(conn->display, conn->queue);
-        wl_display_roundtrip_queue(conn->display, conn->queue); // get globals
-        wl_display_roundtrip_queue(conn->display, conn->queue); // get features/supported_cicps/etc
-      }
-      else
-      {
-        wl_display_dispatch(conn->display);
-        wl_display_roundtrip(conn->display); // get globals
-        wl_display_roundtrip(conn->display); // get features/supported_cicps/etc
-      }
-      wl_registry_destroy(registry);
-
-      if (!conn->colorXwayland)
-      {
-        fprintf(stderr, "[HDR Layer] wayland compositor lacking bypass protocol, only wayland surfaces will be supported.\n");
-      }
-      if (!conn->colorManagement)
-      {
-        fprintf(stderr, "[HDR Layer] wayland compositor lacking color management protocol..\n");
-        return VK_ERROR_INITIALIZATION_FAILED;
-      }
-      if (!contains_u32(conn->features, WP_COLOR_MANAGER_V1_FEATURE_PARAMETRIC))
-      {
-        fprintf(stderr, "[HDR Layer] color management implementation doesn't support parametric image descriptions..\n");
-        return VK_ERROR_INITIALIZATION_FAILED;
-      }
-      if (!contains_u32(conn->features, WP_COLOR_MANAGER_V1_FEATURE_SET_PRIMARIES))
-      {
-        fprintf(stderr, "[HDR Layer] color management implementation doesn't support SET_PRIMARIES..\n");
-        return VK_ERROR_INITIALIZATION_FAILED;
-      }
-      if (!conn->colorRepresentation)
-      {
-        fprintf(stderr, "[HDR Layer] wayland compositor lacking color representation protocol..\n");
-        return VK_ERROR_INITIALIZATION_FAILED;
-      }
-
-      return VK_SUCCESS;
-    }
-
-    static void DumpHdrSurfaceState(HdrSurface &surface)
-    {
-      fprintf(stderr, "[HDR Layer] Surface state:\n");
-      fprintf(stderr, "  wayland surface res id:        %u\n", wl_proxy_get_id(reinterpret_cast<struct wl_proxy *>(surface->surface)));
-      fprintf(stderr, "  window xid:                    0x%x\n", surface->window);
-    }
-
-    static VkBool32 GetPhysicalDevicePresentationSupport(
-        const vkroots::VkInstanceDispatch *pDispatch,
-        HdrInstance &hdrInstance,
-        VkPhysicalDevice physicalDevice,
-        uint32_t queueFamilyIndex)
-    {
-      return pDispatch->GetPhysicalDeviceWaylandPresentationSupportKHR(physicalDevice, queueFamilyIndex, hdrInstance->globalConn.display);
-    }
-
     static constexpr struct wp_color_manager_v1_listener color_interface_listener
     {
       .supported_intent = [](void *data,
@@ -529,18 +451,18 @@ namespace HdrLayer
                               struct wp_color_manager_v1 *wp_color_manager_v1,
                               uint32_t feature)
       {
-        auto instance = reinterpret_cast<WaylandConnectionData *>(data);
-        instance->features.push_back(feature);
+        auto surface = reinterpret_cast<HdrSurfaceData *>(data);
+        surface->features.push_back(feature);
       },
       .supported_tf_cicp = [](void *data, struct wp_color_manager_v1 *wp_color_manager_v1, uint32_t tf_code)
       {
-        auto instance = reinterpret_cast<WaylandConnectionData *>(data);
-        instance->tf_cicp.push_back(tf_code);
+        auto surface = reinterpret_cast<HdrSurfaceData *>(data);
+        surface->tf_cicp.push_back(tf_code);
       },
       .supported_primaries_cicp = [](void *data, struct wp_color_manager_v1 *wp_color_manager_v1, uint32_t primaries_code)
       {
-        auto instance = reinterpret_cast<WaylandConnectionData *>(data);
-        instance->primaries_cicp.push_back(primaries_code);
+        auto surface = reinterpret_cast<HdrSurfaceData *>(data);
+        surface->primaries_cicp.push_back(primaries_code);
       }
     };
 
@@ -563,19 +485,16 @@ namespace HdrLayer
     static constexpr wl_registry_listener s_registryListener = {
         .global = [](void *data, wl_registry *registry, uint32_t name, const char *interface, uint32_t version)
         {
-        auto instance = reinterpret_cast<WaylandConnectionData *>(data);
+        auto surface = reinterpret_cast<HdrSurfaceData *>(data);
 
-        if (interface == "zcolor_bypass_xwayland"sv) {
-          instance->colorXwayland = reinterpret_cast<zcolor_bypass_xwayland *>(
-            wl_registry_bind(registry, name, &zcolor_bypass_xwayland_interface, version));
-        } else if (interface == "wp_color_manager_v1"sv) {
-          instance->colorManagement = reinterpret_cast<wp_color_manager_v1 *>(
+        if (interface == "wp_color_manager_v1"sv) {
+          surface->colorManagement = reinterpret_cast<wp_color_manager_v1 *>(
             wl_registry_bind(registry, name, &wp_color_manager_v1_interface, version));
-          wp_color_manager_v1_add_listener(instance->colorManagement, &color_interface_listener, data);
+          wp_color_manager_v1_add_listener(surface->colorManagement, &color_interface_listener, data);
         } else if (interface == "wp_color_representation_manager_v1"sv) {
-          instance->colorRepresentation = reinterpret_cast<wp_color_representation_manager_v1 *>(
+          surface->colorRepresentationMgr = reinterpret_cast<wp_color_representation_manager_v1 *>(
             wl_registry_bind(registry, name, &wp_color_representation_manager_v1_interface, version));
-          wp_color_representation_manager_v1_add_listener(instance->colorRepresentation, &representation_interface_listener, nullptr);
+          wp_color_representation_manager_v1_add_listener(surface->colorRepresentationMgr, &representation_interface_listener, nullptr);
         } },
         .global_remove = [](void *data, wl_registry *registry, uint32_t name) {},
     };
@@ -647,96 +566,78 @@ namespace HdrLayer
       }
 
       VkResult result = pDispatch->CreateSwapchainKHR(device, &swapchainInfo, pAllocator, pSwapchain);
-      if (hdrSurface)
+      if (hdrSurface && result == VK_SUCCESS)
       {
-        if (result == VK_SUCCESS)
+        if (pCreateInfo->compositeAlpha == VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
         {
-          auto hdrInstance = HdrInstance::get(hdrSurface->instance);
-          if (hdrInstance)
+          wp_color_representation_v1_set_alpha_mode(hdrSurface->colorRepresentation, WP_COLOR_REPRESENTATION_V1_ALPHA_MODE_PREMULTIPLIED_ELECTRICAL);
+        }
+        else if (pCreateInfo->compositeAlpha == VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR)
+        {
+          wp_color_representation_v1_set_alpha_mode(hdrSurface->colorRepresentation, WP_COLOR_REPRESENTATION_V1_ALPHA_MODE_STRAIGHT);
+        }
+
+        auto primaries = 0;
+        auto tf = 0;
+        for (auto desc = s_ExtraHDRSurfaceFormats.begin(); desc != s_ExtraHDRSurfaceFormats.end(); ++desc)
+        {
+          if (desc->surface.surfaceFormat.colorSpace == pCreateInfo->imageColorSpace)
           {
-            auto waylandConn = (hdrSurface->surfaceConn.display) ? &hdrSurface->surfaceConn : &hdrInstance->globalConn;
-            if (pCreateInfo->compositeAlpha == VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
-            {
-              wp_color_representation_v1_set_alpha_mode(hdrSurface->colorRepresentation, WP_COLOR_REPRESENTATION_V1_ALPHA_MODE_PREMULTIPLIED_ELECTRICAL);
-            }
-            else if (pCreateInfo->compositeAlpha == VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR)
-            {
-              wp_color_representation_v1_set_alpha_mode(hdrSurface->colorRepresentation, WP_COLOR_REPRESENTATION_V1_ALPHA_MODE_STRAIGHT);
-            }
+            primaries = desc->primaries_cicp;
+            tf = desc->tf_cicp;
+            break;
+          }
+        }
 
-            auto primaries = 0;
-            auto tf = 0;
-            switch (pCreateInfo->imageColorSpace)
-            {
-            case VK_COLOR_SPACE_HDR10_ST2084_EXT:
-              primaries = 9;
-              tf = 16;
-              break;
-            case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
-              primaries = 1;
-              tf = 8;
-              break;
-            case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
-              break;
-            default:
-              fprintf(stderr, "[HDR Layer] Unknown color space, assuming untagged");
-            };
+        if (primaries == 0 && tf == 0 && pCreateInfo->imageColorSpace != VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && pCreateInfo->imageColorSpace != VK_COLOR_SPACE_PASS_THROUGH_EXT)
+        {
+          fprintf(stderr, "[HDR Layer] Unknown color space, assuming untagged");
+        };
 
-            wp_image_description_v1 *desc = nullptr;
+        /*
+        if (pCreateInfo->imageColorSpace == VK_COLOR_SPACE_PASS_THROUGH_EXT) {
+          // just use preferred? Ideally would like to use the most overlapping wl_outputs color description here
+        }
+        */
 
-            if (primaries != 0 && tf != 0)
-            {
-              auto status = DescStatus::WAITING;
-              wp_image_description_creator_params_v1 *params = wp_color_manager_v1_new_parametric_creator(waylandConn->colorManagement);
-              wp_image_description_creator_params_v1_set_primaries_cicp(params, primaries);
-              wp_image_description_creator_params_v1_set_tf_cicp(params, tf);
-              desc = wp_image_description_creator_params_v1_create(params);
-              wp_image_description_v1_add_listener(desc, &image_description_interface_listener, &status);
-              while (status == DescStatus::WAITING)
-              {
-                if (waylandConn->queue)
-                {
-                  wl_display_roundtrip_queue(waylandConn->display, waylandConn->queue);
-                }
-                else
-                {
-                  wl_display_roundtrip(waylandConn->display);
-                }
-              }
-              if (status == DescStatus::FAILED)
-              {
-                fprintf(stderr, "[HDR Layer] Failed to create image description, failing swapchain creation");
-                return VK_ERROR_INITIALIZATION_FAILED;
-              }
-            }
+        wp_image_description_v1 *desc = nullptr;
 
-            if (waylandConn->queue)
-            {
-              wl_display_roundtrip_queue(waylandConn->display, waylandConn->queue);
-            }
-            else
-            {
-              wl_display_roundtrip(waylandConn->display);
-            }
-
-            HdrSwapchain::create(*pSwapchain, HdrSwapchainData{
-                                                  .surface = pCreateInfo->surface,
-                                                  .primaries = primaries,
-                                                  .tf = tf,
-                                                  .colorDescription = desc,
-                                                  .desc_dirty = true,
-                                              });
+        if (primaries != 0 && tf != 0)
+        {
+          auto status = DescStatus::WAITING;
+          wp_image_description_creator_params_v1 *params = wp_color_manager_v1_new_parametric_creator(hdrSurface->colorManagement);
+          wp_image_description_creator_params_v1_set_primaries_cicp(params, primaries);
+          wp_image_description_creator_params_v1_set_tf_cicp(params, tf);
+          desc = wp_image_description_creator_params_v1_create(params);
+          wp_image_description_v1_add_listener(desc, &image_description_interface_listener, &status);
+          while (status == DescStatus::WAITING)
+          {
+            wl_display_roundtrip_queue(hdrSurface->display, hdrSurface->queue);
+          }
+          if (status == DescStatus::FAILED)
+          {
+            fprintf(stderr, "[HDR Layer] Failed to create image description, failing swapchain creation");
+            return VK_ERROR_INITIALIZATION_FAILED;
           }
         }
         else
         {
-          fprintf(stderr, "[HDR Layer] Failed to create swapchain - vr: %s id: %u\n", vkroots::helpers::enumString(result), wl_proxy_get_id(reinterpret_cast<struct wl_proxy *>(hdrSurface->surface)));
+          wl_display_roundtrip_queue(hdrSurface->display, hdrSurface->queue); // send alpha mode
         }
+
+        HdrSwapchain::create(*pSwapchain, HdrSwapchainData{
+                                              .surface = pCreateInfo->surface,
+                                              .primaries = primaries,
+                                              .tf = tf,
+                                              .colorDescription = desc,
+                                              .desc_dirty = true,
+                                          });
       }
       return result;
     }
 
-    static void SetHdrMetadataEXT(
+    static void
+    SetHdrMetadataEXT(
         const vkroots::VkDeviceDispatch *pDispatch,
         VkDevice device,
         uint32_t swapchainCount,
@@ -760,18 +661,8 @@ namespace HdrLayer
           continue;
         }
 
-        auto hdrInstance = HdrInstance::get(hdrSurface->instance);
-        if (!hdrInstance)
-        {
-          fprintf(stderr, "[HDR Layer] SetHdrMetadataEXT: Instance for swapchain %u was already destroyed. (App use after free).\n", i);
-          abort();
-          continue;
-        }
-
-        auto waylandConn = (hdrSurface->surfaceConn.display) ? &hdrSurface->surfaceConn : &hdrInstance->globalConn;
-
         const VkHdrMetadataEXT &metadata = pMetadata[i];
-        wp_image_description_creator_params_v1 *params = wp_color_manager_v1_new_parametric_creator(waylandConn->colorManagement);
+        wp_image_description_creator_params_v1 *params = wp_color_manager_v1_new_parametric_creator(hdrSurface->colorManagement);
         wp_image_description_creator_params_v1_set_mastering_display_primaries(
             params,
             (uint32_t)round(metadata.displayPrimaryRed.x * 10000.0),
@@ -796,14 +687,7 @@ namespace HdrLayer
         wp_image_description_v1_add_listener(desc, &image_description_interface_listener, &status);
         while (status == DescStatus::WAITING)
         {
-          if (waylandConn->queue)
-          {
-            wl_display_roundtrip_queue(waylandConn->display, waylandConn->queue);
-          }
-          else
-          {
-            wl_display_roundtrip(waylandConn->display);
-          }
+          wl_display_roundtrip_queue(hdrSurface->display, hdrSurface->queue);
         }
         if (status == DescStatus::FAILED)
         {
@@ -870,13 +754,11 @@ namespace HdrLayer
       // we don't call get_information, so the rest should never be called
     };
   };
-
 }
 
 VKROOTS_DEFINE_LAYER_INTERFACES(HdrLayer::VkInstanceOverrides,
                                 vkroots::NoOverrides,
                                 HdrLayer::VkDeviceOverrides);
 
-VKROOTS_IMPLEMENT_SYNCHRONIZED_MAP_TYPE(HdrLayer::HdrInstance);
 VKROOTS_IMPLEMENT_SYNCHRONIZED_MAP_TYPE(HdrLayer::HdrSurface);
 VKROOTS_IMPLEMENT_SYNCHRONIZED_MAP_TYPE(HdrLayer::HdrSwapchain);

@@ -5,7 +5,6 @@ wayland_scanner = find_program(wayland_scanner_path, native: true)
 protocols = [
 	'color-management-v1',
 	'color-representation-v1',
-	'color-bypass-xwayland',
 ]
 
 protocols_client_src = []
