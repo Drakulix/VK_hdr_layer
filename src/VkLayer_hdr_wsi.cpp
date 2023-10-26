@@ -222,56 +222,65 @@ namespace HdrLayer
         return res;
       }
 
-      auto hdrSurface = HdrSurface::create(*pSurface, HdrSurfaceData{
-                                                          .instance = instance,
-                                                          .display = pCreateInfo->display,
-                                                          .queue = queue,
-                                                          .colorManagement = nullptr,
-                                                          .colorRepresentationMgr = nullptr,
-                                                          .features = {},
-                                                          .tf_cicp = {},
-                                                          .primaries_cicp = {},
-                                                          .surface = pCreateInfo->surface,
-                                                          .colorSurface = nullptr,
-                                                          .colorRepresentation = nullptr,
-                                                      });
-      wl_registry_add_listener(registry, &s_registryListener, reinterpret_cast<void *>(hdrSurface.get()));
+      {
+        auto hdrSurface = HdrSurface::create(*pSurface, HdrSurfaceData{
+                                                            .instance = instance,
+                                                            .display = pCreateInfo->display,
+                                                            .queue = queue,
+                                                            .colorManagement = nullptr,
+                                                            .colorRepresentationMgr = nullptr,
+                                                            .features = {},
+                                                            .tf_cicp = {},
+                                                            .primaries_cicp = {},
+                                                            .surface = pCreateInfo->surface,
+                                                            .colorSurface = nullptr,
+                                                            .colorRepresentation = nullptr,
+                                                        });
 
-      wl_display_dispatch_queue(pCreateInfo->display, queue);
-      wl_display_roundtrip_queue(pCreateInfo->display, queue); // get globals
-      wl_display_roundtrip_queue(pCreateInfo->display, queue); // get features/supported_cicps/etc
-      wl_registry_destroy(registry);
+        wl_registry_add_listener(registry, &s_registryListener, reinterpret_cast<void *>(hdrSurface.get()));
+        wl_display_dispatch_queue(pCreateInfo->display, queue);
+        wl_display_roundtrip_queue(pCreateInfo->display, queue); // get globals
+        wl_display_roundtrip_queue(pCreateInfo->display, queue); // get features/supported_cicps/etc
+        wl_registry_destroy(registry);
+      }
 
-      if (!hdrSurface.get()->colorManagement)
+      if (!HdrSurface::get(*pSurface)->colorManagement)
       {
         fprintf(stderr, "[HDR Layer] wayland compositor lacking color management protocol..\n");
-        return VK_ERROR_INITIALIZATION_FAILED;
+
+        HdrSurface::remove(*pSurface);
+        return VK_SUCCESS;
       }
-      if (!contains_u32(hdrSurface.get()->features, WP_COLOR_MANAGER_V1_FEATURE_PARAMETRIC))
+      if (!contains_u32(HdrSurface::get(*pSurface)->features, WP_COLOR_MANAGER_V1_FEATURE_PARAMETRIC))
       {
         fprintf(stderr, "[HDR Layer] color management implementation doesn't support parametric image descriptions..\n");
-        return VK_ERROR_INITIALIZATION_FAILED;
+        HdrSurface::remove(*pSurface);
+        return VK_SUCCESS;
       }
-      if (!contains_u32(hdrSurface.get()->features, WP_COLOR_MANAGER_V1_FEATURE_SET_PRIMARIES))
+      if (!contains_u32(HdrSurface::get(*pSurface)->features, WP_COLOR_MANAGER_V1_FEATURE_SET_PRIMARIES))
       {
         fprintf(stderr, "[HDR Layer] color management implementation doesn't support SET_PRIMARIES..\n");
-        return VK_ERROR_INITIALIZATION_FAILED;
+        HdrSurface::remove(*pSurface);
+        return VK_SUCCESS;
       }
-      if (!hdrSurface.get()->colorRepresentationMgr)
+      if (!HdrSurface::get(*pSurface)->colorRepresentationMgr)
       {
         fprintf(stderr, "[HDR Layer] wayland compositor lacking color representation protocol..\n");
-        return VK_ERROR_INITIALIZATION_FAILED;
+        HdrSurface::remove(*pSurface);
+        return VK_SUCCESS;
       }
 
-      wp_color_management_surface_v1 *colorSurface = wp_color_manager_v1_get_color_management_surface(hdrSurface.get()->colorManagement, pCreateInfo->surface);
+      auto hdrSurface = HdrSurface::get(*pSurface);
+
+      wp_color_management_surface_v1 *colorSurface = wp_color_manager_v1_get_color_management_surface(hdrSurface->colorManagement, pCreateInfo->surface);
       wp_color_management_surface_v1_add_listener(colorSurface, &color_surface_interface_listener, nullptr);
-      wp_color_representation_v1 *colorRepresentation = wp_color_representation_manager_v1_create(hdrSurface.get()->colorRepresentationMgr, pCreateInfo->surface);
-      wl_display_flush(hdrSurface.get()->display);
+      wp_color_representation_v1 *colorRepresentation = wp_color_representation_manager_v1_create(hdrSurface->colorRepresentationMgr, pCreateInfo->surface);
+      wl_display_flush(hdrSurface->display);
 
-      hdrSurface.get()->colorSurface = colorSurface;
-      hdrSurface.get()->colorRepresentation = colorRepresentation;
+      hdrSurface->colorSurface = colorSurface;
+      hdrSurface->colorRepresentation = colorRepresentation;
 
-      fprintf(stderr, "[HDR Layer] Creating HDR surface\n");
+      fprintf(stderr, "[HDR Layer] Created HDR surface\n");
       return VK_SUCCESS;
     }
 
