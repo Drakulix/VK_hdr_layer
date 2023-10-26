@@ -304,6 +304,7 @@ namespace HdrLayer
       {
         pixelFormats.push_back(formats[i].format);
       }
+      free(formats);
 
       std::vector<VkSurfaceFormatKHR> extraFormats = {};
       for (auto desc = s_ExtraHDRSurfaceFormats.begin(); desc != s_ExtraHDRSurfaceFormats.end(); ++desc)
@@ -365,6 +366,7 @@ namespace HdrLayer
       {
         pixelFormats.push_back(formats[i].format);
       }
+      free(formats);
 
       std::vector<VkSurfaceFormat2KHR> extraFormats = {};
       for (auto desc = s_ExtraHDRSurfaceFormats.begin(); desc != s_ExtraHDRSurfaceFormats.end(); ++desc)
