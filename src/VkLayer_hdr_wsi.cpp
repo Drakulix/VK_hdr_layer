@@ -705,8 +705,8 @@ namespace HdrLayer
             (uint32_t)round(metadata.maxLuminance));
         wp_image_description_creator_params_v1_set_primaries_cicp(params, hdrSwapchain->primaries);
         wp_image_description_creator_params_v1_set_tf_cicp(params, hdrSwapchain->tf);
-        wp_image_description_creator_params_v1_set_maxCLL(params, (uint32_t)round(metadata.maxContentLightLevel));
-        wp_image_description_creator_params_v1_set_maxFALL(params, (uint32_t)round(metadata.maxFrameAverageLightLevel));
+        wp_image_description_creator_params_v1_set_max_cll(params, (uint32_t)round(metadata.maxContentLightLevel));
+        wp_image_description_creator_params_v1_set_max_fall(params, (uint32_t)round(metadata.maxFrameAverageLightLevel));
 
         auto status = DescStatus::WAITING;
         wp_image_description_v1 *desc = wp_image_description_creator_params_v1_create(params);
