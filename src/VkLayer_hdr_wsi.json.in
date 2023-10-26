@@ -8,12 +8,12 @@
       "implementation_version": "1",
       "description": "WSI HDR Layer (@family@)",
       "functions": {
-         "vkNegotiateLoaderLayerInterfaceVersion": "vkNegotiateLoaderLayerInterfaceVersion",
+         "vkNegotiateLoaderLayerInterfaceVersion": "vkNegotiateLoaderLayerInterfaceVersion"
       },
       "instance_extensions": [
         {
           "name": "VK_EXT_swapchain_colorspace",
-          "spec_version": 4,
+          "spec_version": 4
         }
       ],
       "enable_environment": {
