@@ -196,7 +196,7 @@ namespace HdrLayer
           pCreateInfo->ppEnabledExtensionNames + pCreateInfo->enabledExtensionCount);
 
       if (contains_str(enabledExts, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
-        std::remove(enabledExts.begin(), enabledExts.end(), VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+        std::erase(enabledExts, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
 
       VkInstanceCreateInfo createInfo = *pCreateInfo;
       createInfo.enabledExtensionCount = uint32_t(enabledExts.size());
