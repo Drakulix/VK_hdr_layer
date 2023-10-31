@@ -16,15 +16,15 @@ namespace HdrLayer
 {
   static bool contains_str(const std::vector<const char *> vec, std::string_view lookupValue)
   {
-    return std::find_if(vec.begin(), vec.end(),
+    return std::any_of(vec.begin(), vec.end(),
                         [=](const char *value)
-                        { return value == lookupValue; }) != vec.end();
+                        { return value == lookupValue; });
   }
   static bool contains_u32(const std::vector<uint32_t> vec, uint32_t lookupValue)
   {
-    return std::find_if(vec.begin(), vec.end(),
+    return std::any_of(vec.begin(), vec.end(),
                         [=](uint32_t value)
-                        { return value == lookupValue; }) != vec.end();
+                        { return value == lookupValue; });
   }
 
   struct ColorDescription
@@ -196,7 +196,7 @@ namespace HdrLayer
           pCreateInfo->ppEnabledExtensionNames + pCreateInfo->enabledExtensionCount);
 
       if (contains_str(enabledExts, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
-        std::remove(enabledExts.begin(), enabledExts.end(), VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+        std::erase(enabledExts, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
 
       VkInstanceCreateInfo createInfo = *pCreateInfo;
       createInfo.enabledExtensionCount = uint32_t(enabledExts.size());
